@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Hühnerrennen Admin</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.6.0/sha1.min.js"></script>
+    <style>
+        #passwordOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .password-box {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f0f4f8;
+        }
+        button {
+            padding: 10px 20px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        #passwordError {
+            color: red;
+            display: none;
+            margin-top: 15px;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="passwordOverlay">
+        <div class="password-box">
+            <h2>🔒 Admin-Zugang Hühnerrennen</h2>
+            <input type="password" id="passwordInput" placeholder="Code eingeben">
+            <button onclick="checkPassword()">Freischalten</button>
+            <p id="passwordError">Falscher Code!</p>
+        </div>
+    </div>
+
+    <div id="content" style="display:none;">
+        <div style="padding:20px;">
+            <div style="background:#fff; padding:15px; border-radius:8px; margin-bottom:20px;">
+                <label>🏦 Hausgewinn: 
+                    <input type="number" id="hausgewinnInput" value="15" min="5" max="50" style="width:60px; padding:5px;">
+                    %
+                </label>
+                <button onclick="updateHausgewinn()" style="background:#4a5568;">Übernehmen</button>
+            </div>
+
+            <h1>🐔 Hühnerrennen Kontrollzentrum</h1>
+            
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                <div style="border:2px solid #e2e8f0; padding:15px; border-radius:8px;">
+                    <h2>🥚 Neue Wette</h2>
+                    <input type="text" id="playerName" placeholder="Spielername" style="width:200px; margin:5px;">
+                    <br>
+                    <select id="chickenSelect" style="margin:5px;">
+                        <option value="1">🐥 Huhn 1 (Blitzhenne)</option>
+                        <option value="2">🔥 Huhn 2 (Turbo-Feder)</option>
+                        <option value="3">🌈 Huhn 3 (Regenbogen-Sturm)</option>
+                        <option value="4">💨 Huhn 4 (Windflügel)</option>
+                        <option value="5">⚡ Huhn 5 (Megawatt)</option>
+                    </select>
+                    <br>
+                    <input type="number" id="betAmount" value="10" min="1" style="width:100px; margin:5px;"> €
+                    <br>
+                    <button onclick="placeBet()">💸 Wette abschicken</button>
+                </div>
+
+                <div style="border:2px solid #e2e8f0; padding:15px; border-radius:8px;">
+                    <h2>🏆 Gewinner küren</h2>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button onclick="declareWinner(1)" style="background:#f56565;">Huhn 1</button>
+                        <button onclick="declareWinner(2)" style="background:#48bb78;">Huhn 2</button>
+                        <button onclick="declareWinner(3)" style="background:#4299e1;">Huhn 3</button>
+                        <button onclick="declareWinner(4)" style="background:#f6e05e;">Huhn 4</button>
+                        <button onclick="declareWinner(5)" style="background:#9f7aea;">Huhn 5</button>
+                    </div>
+                    <div id="winnerResults" style="margin-top:15px;"></div>
+                </div>
+
+                <div style="grid-column:span 2; border:2px solid #e2e8f0; padding:15px; border-radius:8px;">
+                    <h2>📊 Live-Statistik</h2>
+                    <div>
+                        <p>Gesamtpool: <span id="totalPool">0</span>€</p>
+                        <p>Hausgewinn: <span id="hausgewinnDisplay">15</span>%</p>
+                        <p>Letzte Aktualisierung: <span id="lastUpdate">-</span></p>
+                    </div>
+                    <table style="width:100%; margin-top:10px;">
+                        <thead>
+                            <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
+                        </thead>
+                        <tbody id="oddsTable"></tbody>
+                    </table>
+                </div>
+
+                <div style="grid-column:span 2; border:2px solid #e2e8f0; padding:15px; border-radius:8px;">
+                    <h2>📜 Alle Wetten</h2>
+                    <table style="width:100%; margin-top:10px;">
+                        <thead>
+                            <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
+                        </thead>
+                        <tbody id="allBets"></tbody>
+                    </table>
+                    <button onclick="resetBets()" style="background:#f56565; margin-top:15px;">🗑️ Alle Wetten löschen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Globale Variablen
+        const ADMIN_PW_HASH = '429fd9718837cb7c4e6ace0712fde01e58be3368';
+        let hausgewinn = 15;
+        let chickens = {
+            1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
+            2: { name: "Turbo-Feder", bets: [], total: 0, color: "#48bb78" },
+            3: { name: "Regenbogen-Sturm", bets: [], total: 0, color: "#4299e1" },
+            4: { name: "Windflügel", bets: [], total: 0, color: "#f6e05e" },
+            5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
+        };
+
+        function checkPassword() {
+            const input = document.getElementById('passwordInput').value;
+            const inputHash = sha1(input);
+            
+            if(inputHash === ADMIN_PW_HASH) {
+                document.getElementById('passwordOverlay').style.display = "none";
+                document.getElementById('content').style.display = "block";
+                initSystem();
+            } else {
+                const errorElement = document.getElementById('passwordError');
+                errorElement.style.display = "block";
+                document.body.style.animation = "shake 0.5s";
+                setTimeout(() => {
+                    document.body.style.animation = "";
+                    errorElement.style.display = "none";
+                }, 1000);
+            }
+        }
+
+        function placeBet() {
+            const player = document.getElementById('playerName').value.trim();
+            const chickenId = document.getElementById('chickenSelect').value;
+            const amount = parseFloat(document.getElementById('betAmount').value);
+
+            if (!player || isNaN(amount) || amount < 1) {
+                alert("Bitte gültige Werte eingeben!");
+                return;
+            }
+
+            if (!chickens[chickenId]) {
+                alert("Ungültiges Huhn ausgewählt!");
+                return;
+            }
+
+            chickens[chickenId].bets.push({
+                player: player,
+                amount: amount,
+                timestamp: Date.now()
+            });
+            chickens[chickenId].total += amount;
+            
+            saveData();
+            updateDisplay();
+        }
+
+        function declareWinner(winnerId) {
+            if (!chickens[winnerId]) {
+                alert("Ungültiges Huhn ausgewählt!");
+                return;
+            }
+
+            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
+            const houseCut = totalPool * (hausgewinn / 100);
+            const payoutPool = totalPool - houseCut;
+            const winner = chickens[winnerId];
+            
+            const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
+
+            // Speichere vollständige Gewinnerdaten für Stats
+            const winnerData = {
+                id: winnerId,
+                name: winner.name,
+                time: new Date().toLocaleString(),
+                color: winner.color,
+                bets: [...winner.bets],
+                payoutRate: parseFloat(payoutRate)
+            };
+            localStorage.setItem('lastWinner', JSON.stringify(winnerData));
+
+            const resultHTML = `
+                <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
+                    <h3>🏆 ${winner.name} gewinnt!</h3>
+                    <p>Auszahlungsrate: ${payoutRate}€ pro 1€ Einsatz</p>
+                    ${winner.bets.length > 0 ? `
+                    <table style="width:100%; margin-top:10px;">
+                        ${winner.bets.map(bet => `
+                            <tr>
+                                <td>${bet.player}</td>
+                                <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
+                            </tr>
+                        `).join('')}
+                    </table>` : '<p>Keine Wetten für dieses Huhn</p>'}
+                </div>
+            `;
+            
+            document.getElementById('winnerResults').innerHTML = resultHTML;
+            saveData();
+        }
+
+        function updateDisplay() {
+            if (!chickens) {
+                console.error("Chickens nicht initialisiert!");
+                return;
+            }
+
+            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0) || 0;
+            const houseCut = totalPool * (hausgewinn / 100);
+            const payoutPool = totalPool - houseCut;
+
+            document.getElementById('oddsTable').innerHTML = Object.keys(chickens).map(id => `
+                <tr>
+                    <td>${chickens[id].name}</td>
+                    <td>${chickens[id].total.toFixed(2)}€</td>
+                    <td>${chickens[id].total > 0 ? (payoutPool / chickens[id].total).toFixed(2) + "€" : "-"}</td>
+                </tr>
+            `).join('');
+
+            document.getElementById('allBets').innerHTML = Object.keys(chickens).map(id => 
+                chickens[id].bets.map(bet => `
+                    <tr>
+                        <td>${bet.player}</td>
+                        <td>${chickens[id].name}</td>
+                        <td>${bet.amount.toFixed(2)}€</td>
+                        <td>${new Date(bet.timestamp).toLocaleTimeString()}</td>
+                    </tr>
+                `).join('')
+            ).join('');
+
+            document.getElementById('totalPool').textContent = totalPool.toFixed(2);
+            document.getElementById('hausgewinnDisplay').textContent = hausgewinn;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        function resetBets() {
+            if (!confirm("ALLE Wetten wirklich löschen?")) return;
+            
+            Object.keys(chickens).forEach(id => {
+                chickens[id].bets = [];
+                chickens[id].total = 0;
+            });
+            
+            localStorage.removeItem('chickenData');
+            updateDisplay();
+        }
+
+        function saveData() {
+            const data = JSON.stringify({
+                chickens: chickens,
+                hausgewinn: hausgewinn
+            });
+            localStorage.setItem('chickenData', data);
+            localStorage.setItem('dataHash', sha1(data));
+        }
+
+        function initSystem() {
+            try {
+                const savedData = localStorage.getItem('chickenData');
+                if (savedData) {
+                    if (sha1(savedData) !== localStorage.getItem('dataHash')) {
+                        throw new Error('Datenmanipulation erkannt');
+                    }
+                    
+                    const parsedData = JSON.parse(savedData);
+                    
+                    chickens = Object.keys(chickens).reduce((acc, key) => {
+                        acc[key] = parsedData.chickens[key] || chickens[key];
+                        return acc;
+                    }, {});
+                    
+                    hausgewinn = parsedData.hausgewinn || 15;
+                }
+            } catch (e) {
+                console.error("Initialisierungsfehler:", e);
+                resetBets();
+            }
+            
+            document.getElementById('hausgewinnInput').value = hausgewinn;
+            updateDisplay();
+        }
+
+        function updateHausgewinn() {
+            const newValue = parseInt(document.getElementById('hausgewinnInput').value);
+            if (isNaN(newValue) || newValue < 5 || newValue > 50) {
+                alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
+                return;
+            }
+            hausgewinn = newValue;
+            saveData();
+            updateDisplay();
+        }
+
+        // ========== SICHERHEITSFUNKTIONEN ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            // Blockiere Entwicklerwerkzeuge
+            document.addEventListener('keydown', e => {
+                if (
+                    e.key === 'F12' ||
+                    (e.ctrlKey && e.shiftKey && e.key === 'I') || 
+                    (e.ctrlKey && e.shiftKey && e.key === 'J') ||
+                    (e.ctrlKey && e.key === 'U')
+                ) {
+                    e.preventDefault();
+                    document.body.innerHTML = `
+                        <h1 style="color:red; text-align:center; margin-top:100px;">
+                            ⚠️ Zugriff auf Entwicklerwerkzeuge blockiert!
+                        </h1>
+                    `;
+                }
+            });
+            
+            // Blockiere Rechtsklick
+            document.addEventListener('contextmenu', e => e.preventDefault());
+            
+            initSystem();
+        });
+
+        // Automatisches Speichern alle 30 Sekunden
+        setInterval(saveData, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Hühnerrennen-Statistik</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f0f4f8;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 2px solid #d1d8e0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #e8e8e8;
+            text-align: left;
+            color: #333;
+        }
+        th {
+            background: #f8f9fa;
+        }
+        .winner-banner {
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 2px solid;
+            color: #333;
+        }
+        #refreshButton {
+            background: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+        .hausgewinn-info {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .winner-details table {
+            width: 100%;
+            margin-top: 10px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .winner-details td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            color: #333;
+        }
+        .winner-details tr:last-child td {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐓 Live Hühnerrennen</h1>
+    
+    <div id="lastWinner" class="winner-banner">
+        🏆 Letzter Sieger: Wird geladen...
+    </div>
+
+    <div class="hausgewinn-info">
+        🏦 Aktueller Hausgewinn: <span id="currentHausgewinn">15</span>%
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h2>📈 Aktuelle Quoten</h2>
+            <div id="poolStatus">
+                Letzte Aktualisierung: <span id="updateTime">-</span>
+            </div>
+            <table id="oddsTable">
+                <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>📋 Alle Wetten</h2>
+            <table id="allBets">
+                <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
+            </table>
+            <button id="refreshButton" onclick="loadData()">⟳ Aktualisieren</button>
+        </div>
+    </div>
+
+    <script>
+        // Funktion zum Laden der Daten
+        function loadData() {
+            try {
+                const data = localStorage.getItem('chickenData');
+                const winnerData = localStorage.getItem('lastWinner');
+                let hausgewinn = 15;
+                let chickens = null;
+
+                // Lade Hausgewinn und Huhn-Daten
+                if (data) {
+                    const parsedData = JSON.parse(data);
+                    chickens = parsedData.chickens;
+                    hausgewinn = parsedData.hausgewinn || 15;
+                }
+
+                // Aktualisiere Hausgewinn-Anzeige
+                document.getElementById('currentHausgewinn').textContent = hausgewinn;
+
+                // Aktualisiere Quoten-Tabelle
+                const oddsTable = document.getElementById('oddsTable');
+                if (chickens) {
+                    const totalPool = Object.values(chickens).reduce((sum, c) => sum + (c.total || 0), 0);
+                    const houseCut = totalPool * (hausgewinn / 100);
+                    const payoutPool = totalPool - houseCut;
+                    
+                    oddsTable.innerHTML = `
+                        <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
+                        ${Object.keys(chickens).map(id => `
+                            <tr>
+                                <td>${chickens[id]?.name || 'Unbekannt'}</td>
+                                <td>${(chickens[id]?.total || 0).toFixed(2)}€</td>
+                                <td>${chickens[id]?.total > 0 
+                                    ? (payoutPool / chickens[id].total).toFixed(2) + '€'
+                                    : '-'}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    `;
+                } else {
+                    oddsTable.innerHTML = `<tr><td colspan="3">Keine aktiven Wetten</td></tr>`;
+                }
+
+                // Aktualisiere Wettenliste
+                const allBets = document.getElementById('allBets');
+                if (chickens) {
+                    allBets.innerHTML = `
+                        <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
+                        ${Object.keys(chickens).map(id => 
+                            (chickens[id]?.bets || []).map(bet => `
+                                <tr>
+                                    <td>${bet.player || 'Unbekannt'}</td>
+                                    <td>${chickens[id]?.name || 'Unbekannt'}</td>
+                                    <td>${(bet.amount || 0).toFixed(2)}€</td>
+                                    <td>${bet.timestamp ? new Date(bet.timestamp).toLocaleTimeString() : '-'}</td>
+                                </tr>
+                            `).join('')
+                        ).join('')}
+                    `;
+                }
+
+                // Aktualisiere Zeitstempel
+                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+
+            } catch (e) {
+                console.error('Ladefehler:', e);
+                document.getElementById('currentHausgewinn').textContent = "15";
+                document.getElementById('oddsTable').innerHTML = `
+                    <tr><td colspan="3">Datenfehler - Bitte aktualisieren</td></tr>
+                `;
+            }
+        }
+
+        // Zeige letzten Gewinner an
+        function showLastWinner() {
+            const winnerData = localStorage.getItem('lastWinner');
+            const banner = document.getElementById('lastWinner');
+            
+            if (winnerData) {
+                try {
+                    const { 
+                        name, 
+                        time, 
+                        color = '#48bb78', 
+                        bets = [],
+                        payoutRate = 0 
+                    } = JSON.parse(winnerData);
+
+                    banner.innerHTML = `
+                        <h3 style="margin:0; color: #333;">🏆 ${name} (${time})</h3>
+                        ${bets.length > 0 ? `
+                        <div class="winner-details">
+                            <p style="margin:10px 0 5px 0; color: #333;">🏅 Gewinner:</p>
+                            <table>
+                                ${bets.map(bet => `
+                                    <tr>
+                                        <td>${bet.player || 'Unbekannt'}</td>
+                                        <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
+                                        <td style="color: #666;">(${(bet.amount || 0).toFixed(2)}€ Einsatz)</td>
+                                    </tr>
+                                `).join('')}
+                            </table>
+                        </div>
+                        ` : '<p style="margin-top:10px; color: #333;">Keine Gewinnerwetten</p>'}
+                    `;
+                    banner.style.borderColor = color;
+
+                } catch (e) {
+                    console.error('Fehler beim Laden des Gewinners:', e);
+                    banner.innerHTML = "⚠️ Fehler bei der Gewinneranzeige";
+                    banner.style.background = "#ffe0e0";
+                }
+            } else {
+                banner.innerHTML = "🏁 Noch kein Rennen beendet";
+                banner.style.background = "#f0f0f0";
+            }
+        }
+
+        // Automatische Aktualisierung alle 3 Sekunden
+        setInterval(() => {
+            loadData();
+            showLastWinner();
+        }, 3000);
+
+        // Initiale Ladung beim Start
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            showLastWinner();
+        });
+    </script>
+</body>
+</html>
