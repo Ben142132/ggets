@@ -77,6 +77,155 @@
             border-bottom: none;
         }
     </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
+        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBFgrVFSztNcvGdQnXidIEZ3ZAQrH33JC4",
+            authDomain: "ggbets-43e25.firebaseapp.com",
+            projectId: "ggbets-43e25",
+            storageBucket: "ggbets-43e25.firebasestorage.app",
+            messagingSenderId: "670788094252",
+            appId: "1:670788094252:web:0b0ad8a20c3c115bc20489"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentData = {
+            chickens: null,
+            hausgewinn: 15,
+            lastWinner: null
+        };
+
+        function loadData() {
+            const docRef = doc(db, "rennen", "daten");
+            
+            onSnapshot(docRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    currentData = {
+                        chickens: data.chickens,
+                        hausgewinn: data.hausgewinn || 15,
+                        lastWinner: JSON.parse(localStorage.getItem('lastWinner'))
+                    };
+                    updateUI();
+                }
+            });
+        }
+
+        function updateUI() {
+            // Update Hausgewinn
+            document.getElementById('currentHausgewinn').textContent = currentData.hausgewinn;
+
+            // Update Quoten
+            updateOddsTable();
+
+            // Update Wetten
+            updateBetsTable();
+
+            // Update Gewinner
+            showLastWinner();
+
+            // Update Zeitstempel
+            document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+        }
+
+        function updateOddsTable() {
+            const oddsTable = document.getElementById('oddsTable');
+            if (!currentData.chickens) {
+                oddsTable.innerHTML = '<tr><td colspan="3">Keine aktiven Wetten</td></tr>';
+                return;
+            }
+
+            const totalPool = Object.values(currentData.chickens).reduce((sum, c) => sum + (c.total || 0), 0);
+            const houseCut = totalPool * (currentData.hausgewinn / 100);
+            const payoutPool = totalPool - houseCut;
+
+            oddsTable.innerHTML = `
+                <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
+                ${Object.keys(currentData.chickens).map(id => `
+                    <tr>
+                        <td>${currentData.chickens[id]?.name || 'Unbekannt'}</td>
+                        <td>${(currentData.chickens[id]?.total || 0).toFixed(2)}€</td>
+                        <td>${currentData.chickens[id]?.total > 0 
+                            ? (payoutPool / currentData.chickens[id].total).toFixed(2) + '€'
+                            : '-'}
+                        </td>
+                    </tr>
+                `).join('')}
+            `;
+        }
+
+        function updateBetsTable() {
+            const allBets = document.getElementById('allBets');
+            if (!currentData.chickens) {
+                allBets.innerHTML = '<tr><td colspan="4">Keine gespeicherten Wetten</td></tr>';
+                return;
+            }
+
+            allBets.innerHTML = `
+                <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
+                ${Object.keys(currentData.chickens).map(id => 
+                    (currentData.chickens[id]?.bets || []).map(bet => `
+                        <tr>
+                            <td>${bet.player || 'Unbekannt'}</td>
+                            <td>${currentData.chickens[id]?.name || 'Unbekannt'}</td>
+                            <td>${(bet.amount || 0).toFixed(2)}€</td>
+                            <td>${bet.timestamp ? new Date(bet.timestamp).toLocaleTimeString() : '-'}</td>
+                        </tr>
+                    `).join('')
+                ).join('')}
+            `;
+        }
+
+        function showLastWinner() {
+            const banner = document.getElementById('lastWinner');
+            const winnerData = currentData.lastWinner;
+
+            if (!winnerData) {
+                banner.innerHTML = "🏁 Noch kein Rennen beendet";
+                banner.style.background = "#f0f0f0";
+                banner.style.borderColor = "#ccc";
+                return;
+            }
+
+            try {
+                banner.innerHTML = `
+                    <h3 style="margin:0; color: #333;">🏆 ${winnerData.name} (${winnerData.time})</h3>
+                    ${winnerData.bets?.length > 0 ? `
+                    <div class="winner-details">
+                        <p style="margin:10px 0 5px 0; color: #333;">🏅 Gewinner:</p>
+                        <table>
+                            ${winnerData.bets.map(bet => `
+                                <tr>
+                                    <td>${bet.player || 'Unbekannt'}</td>
+                                    <td>${(bet.amount * winnerData.payoutRate).toFixed(2)}€</td>
+                                    <td style="color: #666;">(${(bet.amount || 0).toFixed(2)}€ Einsatz)</td>
+                                </tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                    ` : '<p style="margin-top:10px; color: #333;">Keine Gewinnerwetten</p>'}
+                `;
+                banner.style.borderColor = winnerData.color || '#48bb78';
+                banner.style.background = "rgba(255,255,255,0.9)";
+            } catch (e) {
+                console.error('Fehler bei der Gewinneranzeige:', e);
+                banner.innerHTML = "⚠️ Fehler beim Laden der Gewinnerdaten";
+                banner.style.background = "#ffe0e0";
+            }
+        }
+
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            setInterval(() => {
+                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+            }, 1000);
+        });
+    </script>
 </head>
 <body>
     <h1>🐓 Live Hühnerrennen</h1>
@@ -108,136 +257,5 @@
             <button id="refreshButton" onclick="loadData()">⟳ Aktualisieren</button>
         </div>
     </div>
-
-    <script>
-        // Funktion zum Laden der Daten
-        function loadData() {
-            try {
-                const data = localStorage.getItem('chickenData');
-                const winnerData = localStorage.getItem('lastWinner');
-                let hausgewinn = 15;
-                let chickens = null;
-
-                // Lade Hausgewinn und Huhn-Daten
-                if (data) {
-                    const parsedData = JSON.parse(data);
-                    chickens = parsedData.chickens;
-                    hausgewinn = parsedData.hausgewinn || 15;
-                }
-
-                // Aktualisiere Hausgewinn-Anzeige
-                document.getElementById('currentHausgewinn').textContent = hausgewinn;
-
-                // Aktualisiere Quoten-Tabelle
-                const oddsTable = document.getElementById('oddsTable');
-                if (chickens) {
-                    const totalPool = Object.values(chickens).reduce((sum, c) => sum + (c.total || 0), 0);
-                    const houseCut = totalPool * (hausgewinn / 100);
-                    const payoutPool = totalPool - houseCut;
-                    
-                    oddsTable.innerHTML = `
-                        <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
-                        ${Object.keys(chickens).map(id => `
-                            <tr>
-                                <td>${chickens[id]?.name || 'Unbekannt'}</td>
-                                <td>${(chickens[id]?.total || 0).toFixed(2)}€</td>
-                                <td>${chickens[id]?.total > 0 
-                                    ? (payoutPool / chickens[id].total).toFixed(2) + '€'
-                                    : '-'}
-                                </td>
-                            </tr>
-                        `).join('')}
-                    `;
-                } else {
-                    oddsTable.innerHTML = `<tr><td colspan="3">Keine aktiven Wetten</td></tr>`;
-                }
-
-                // Aktualisiere Wettenliste
-                const allBets = document.getElementById('allBets');
-                if (chickens) {
-                    allBets.innerHTML = `
-                        <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
-                        ${Object.keys(chickens).map(id => 
-                            (chickens[id]?.bets || []).map(bet => `
-                                <tr>
-                                    <td>${bet.player || 'Unbekannt'}</td>
-                                    <td>${chickens[id]?.name || 'Unbekannt'}</td>
-                                    <td>${(bet.amount || 0).toFixed(2)}€</td>
-                                    <td>${bet.timestamp ? new Date(bet.timestamp).toLocaleTimeString() : '-'}</td>
-                                </tr>
-                            `).join('')
-                        ).join('')}
-                    `;
-                }
-
-                // Aktualisiere Zeitstempel
-                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
-
-            } catch (e) {
-                console.error('Ladefehler:', e);
-                document.getElementById('currentHausgewinn').textContent = "15";
-                document.getElementById('oddsTable').innerHTML = `
-                    <tr><td colspan="3">Datenfehler - Bitte aktualisieren</td></tr>
-                `;
-            }
-        }
-
-        // Zeige letzten Gewinner an
-        function showLastWinner() {
-            const winnerData = localStorage.getItem('lastWinner');
-            const banner = document.getElementById('lastWinner');
-            
-            if (winnerData) {
-                try {
-                    const { 
-                        name, 
-                        time, 
-                        color = '#48bb78', 
-                        bets = [],
-                        payoutRate = 0 
-                    } = JSON.parse(winnerData);
-
-                    banner.innerHTML = `
-                        <h3 style="margin:0; color: #333;">🏆 ${name} (${time})</h3>
-                        ${bets.length > 0 ? `
-                        <div class="winner-details">
-                            <p style="margin:10px 0 5px 0; color: #333;">🏅 Gewinner:</p>
-                            <table>
-                                ${bets.map(bet => `
-                                    <tr>
-                                        <td>${bet.player || 'Unbekannt'}</td>
-                                        <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
-                                        <td style="color: #666;">(${(bet.amount || 0).toFixed(2)}€ Einsatz)</td>
-                                    </tr>
-                                `).join('')}
-                            </table>
-                        </div>
-                        ` : '<p style="margin-top:10px; color: #333;">Keine Gewinnerwetten</p>'}
-                    `;
-                    banner.style.borderColor = color;
-
-                } catch (e) {
-                    console.error('Fehler beim Laden des Gewinners:', e);
-                    banner.innerHTML = "⚠️ Fehler bei der Gewinneranzeige";
-                    banner.style.background = "#ffe0e0";
-                }
-            } else {
-                banner.innerHTML = "🏁 Noch kein Rennen beendet";
-                banner.style.background = "#f0f0f0";
-            }
-        }
-
-        // Automatische Aktualisierung alle 3 Sekunden
-        setInterval(() => {
-            loadData();
-            showLastWinner();
-        }, 3000);
-
-        // Initiale Ladung beim Start
-        document.addEventListener('DOMContentLoaded', () => {
-            loadData();
-            showLastWinner();
-        });
-    </script>
 </body>
 </html>
