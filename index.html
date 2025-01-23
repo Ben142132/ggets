@@ -21,7 +21,7 @@
         const db = getFirestore(app);
 
         // Globale Variablen
-        const ADMIN_PW_HASH = 'a58a37c5b9127c8256c7a0f1a4b5a0a3c991580a';
+        const ADMIN_PW_HASH = 'a58a37c5b9127c8256c7a0f1a4b5a0a3c991580a'; // SHA1 von "Knecht187"
         let hausgewinn = 15;
         let chickens = {
             1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
@@ -31,7 +31,8 @@
             5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
         };
 
-        function checkPassword() {
+        // Funktion global verfügbar machen
+        window.checkPassword = function() {
             const input = document.getElementById('passwordInput').value;
             const inputHash = sha1(input);
             
@@ -48,7 +49,7 @@
                     errorElement.style.display = "none";
                 }, 1000);
             }
-        }
+        };
 
         async function saveData() {
             try {
@@ -63,8 +64,7 @@
             }
         }
 
-        // Rest der Funktionen
-        function placeBet() {
+        window.placeBet = function() {
             const player = document.getElementById('playerName').value.trim();
             const chickenId = document.getElementById('chickenSelect').value;
             const amount = parseFloat(document.getElementById('betAmount').value);
@@ -88,9 +88,9 @@
             chickens[chickenId].total += amount;
             saveData();
             updateDisplay();
-        }
+        };
 
-        function declareWinner(winnerId) {
+        window.declareWinner = function(winnerId) {
             if (!chickens[winnerId]) {
                 alert("Ungültiges Huhn ausgewählt!");
                 return;
@@ -120,7 +120,7 @@
             `;
             document.getElementById('winnerResults').innerHTML = resultHTML;
             saveData();
-        }
+        };
 
         function updateDisplay() {
             const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0) || 0;
@@ -151,7 +151,7 @@
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
         }
 
-        function resetBets() {
+        window.resetBets = function() {
             if (!confirm("ALLE Wetten wirklich löschen?")) return;
             
             Object.keys(chickens).forEach(id => {
@@ -161,7 +161,7 @@
             
             saveData();
             updateDisplay();
-        }
+        };
 
         async function initSystem() {
             const docRef = doc(db, "rennen", "daten");
@@ -190,7 +190,7 @@
             updateDisplay();
         }
 
-        function updateHausgewinn() {
+        window.updateHausgewinn = function() {
             const newValue = parseInt(document.getElementById('hausgewinnInput').value);
             if (isNaN(newValue) || newValue < 5 || newValue > 50) {
                 alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
@@ -199,7 +199,7 @@
             hausgewinn = newValue;
             saveData();
             updateDisplay();
-        }
+        };
 
     </script>
     <style>
