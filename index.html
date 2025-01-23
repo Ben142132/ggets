@@ -4,7 +4,237 @@
     <meta charset="UTF-8">
     <title>Hühnerrennen Admin</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha1/0.6.0/sha1.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBFgrVFSztNcvGdQnXidIEZ3ZAQrH33JC4",
+            authDomain: "ggbets-43e25.firebaseapp.com",
+            projectId: "ggbets-43e25",
+            storageBucket: "ggbets-43e25.firebasestorage.app",
+            messagingSenderId: "670788094252",
+            appId: "1:670788094252:web:0b0ad8a20c3c115bc20489"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Globale Variablen
+        let hausgewinn = 15;
+        let chickens = {
+            1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
+            2: { name: "Turbo-Feder", bets: [], total: 0, color: "#48bb78" },
+            3: { name: "Regenbogen-Sturm", bets: [], total: 0, color: "#4299e1" },
+            4: { name: "Windflügel", bets: [], total: 0, color: "#f6e05e" },
+            5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
+        };
+
+        async function checkPassword() {
+            const input = document.getElementById('passwordInput').value;
+            try {
+                await signInWithEmailAndPassword(auth, "admin@huehnerrennen.de", input);
+                document.getElementById('passwordOverlay').style.display = "none";
+                document.getElementById('content').style.display = "block";
+                initSystem();
+            } catch (error) {
+                handleLoginError();
+            }
+        }
+
+        function handleLoginError() {
+            const errorElement = document.getElementById('passwordError');
+            errorElement.style.display = "block";
+            document.body.style.animation = "shake 0.5s";
+            setTimeout(() => {
+                document.body.style.animation = "";
+                errorElement.style.display = "none";
+            }, 1000);
+        }
+
+        async function saveData() {
+            try {
+                await setDoc(doc(db, "rennen", "daten"), {
+                    chickens: chickens,
+                    hausgewinn: hausgewinn,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (e) {
+                console.error("Speicherfehler: ", e);
+                alert("Fehler beim Speichern!");
+            }
+        }
+
+        function placeBet() {
+            const player = document.getElementById('playerName').value.trim();
+            const chickenId = document.getElementById('chickenSelect').value;
+            const amount = parseFloat(document.getElementById('betAmount').value);
+
+            if (!validateBetInput(player, amount)) return;
+            if (!chickens[chickenId]) {
+                alert("Ungültiges Huhn ausgewählt!");
+                return;
+            }
+
+            chickens[chickenId].bets.push({
+                player: player,
+                amount: amount,
+                timestamp: Date.now()
+            });
+            
+            chickens[chickenId].total += amount;
+            saveData();
+            updateDisplay();
+        }
+
+        function validateBetInput(player, amount) {
+            if (!player || isNaN(amount) || amount < 1) {
+                alert("Bitte gültige Werte eingeben!");
+                return false;
+            }
+            return true;
+        }
+
+        function declareWinner(winnerId) {
+            if (!chickens[winnerId]) {
+                alert("Ungültiges Huhn ausgewählt!");
+                return;
+            }
+
+            const totalPool = calculateTotalPool();
+            const houseCut = totalPool * (hausgewinn / 100);
+            const payoutPool = totalPool - houseCut;
+            const winner = chickens[winnerId];
+            const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
+
+            showWinnerResults(winner, payoutRate);
+            saveData();
+        }
+
+        function calculateTotalPool() {
+            return Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
+        }
+
+        function showWinnerResults(winner, payoutRate) {
+            const resultHTML = `
+                <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
+                    <h3>🏆 ${winner.name} gewinnt!</h3>
+                    <p>Auszahlungsrate: ${payoutRate}€ pro 1€ Einsatz</p>
+                    ${winner.bets.length > 0 ? `
+                    <table style="width:100%; margin-top:10px;">
+                        ${winner.bets.map(bet => `
+                            <tr>
+                                <td>${bet.player}</td>
+                                <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
+                            </tr>
+                        `).join('')}
+                    </table>` : '<p>Keine Wetten für dieses Huhn</p>'}
+                </div>
+            `;
+            document.getElementById('winnerResults').innerHTML = resultHTML;
+        }
+
+        function updateDisplay() {
+            const totalPool = calculateTotalPool();
+            const houseCut = totalPool * (hausgewinn / 100);
+            const payoutPool = totalPool - houseCut;
+
+            updateOddsTable(payoutPool);
+            updateAllBetsTable();
+            updateStatsDisplay(totalPool);
+        }
+
+        function updateOddsTable(payoutPool) {
+            document.getElementById('oddsTable').innerHTML = Object.keys(chickens).map(id => `
+                <tr>
+                    <td>${chickens[id].name}</td>
+                    <td>${chickens[id].total.toFixed(2)}€</td>
+                    <td>${chickens[id].total > 0 ? (payoutPool / chickens[id].total).toFixed(2) + "€" : "-"}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateAllBetsTable() {
+            document.getElementById('allBets').innerHTML = Object.keys(chickens).map(id => 
+                chickens[id].bets.map(bet => `
+                    <tr>
+                        <td>${bet.player}</td>
+                        <td>${chickens[id].name}</td>
+                        <td>${bet.amount.toFixed(2)}€</td>
+                        <td>${new Date(bet.timestamp).toLocaleTimeString()}</td>
+                    </tr>
+                `).join('')
+            ).join('');
+        }
+
+        function updateStatsDisplay(totalPool) {
+            document.getElementById('totalPool').textContent = totalPool.toFixed(2);
+            document.getElementById('hausgewinnDisplay').textContent = hausgewinn;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        function resetBets() {
+            if (!confirm("ALLE Wetten wirklich löschen?")) return;
+            
+            Object.keys(chickens).forEach(id => {
+                chickens[id].bets = [];
+                chickens[id].total = 0;
+            });
+            
+            saveData();
+            updateDisplay();
+        }
+
+        function updateHausgewinn() {
+            const newValue = parseInt(document.getElementById('hausgewinnInput').value);
+            if (isNaN(newValue) || newValue < 5 || newValue > 50) {
+                alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
+                return;
+            }
+            hausgewinn = newValue;
+            saveData();
+            updateDisplay();
+        }
+
+        async function initSystem() {
+            const docRef = doc(db, "rennen", "daten");
+            
+            onSnapshot(docRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    chickens = data.chickens;
+                    hausgewinn = data.hausgewinn;
+                    updateDisplay();
+                }
+            });
+
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    chickens = data.chickens;
+                    hausgewinn = data.hausgewinn;
+                }
+            } catch (e) {
+                console.error("Ladefehler: ", e);
+            }
+            
+            document.getElementById('hausgewinnInput').value = hausgewinn;
+            updateDisplay();
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                document.getElementById('passwordOverlay').style.display = "flex";
+                document.getElementById('content').style.display = "none";
+            }
+        });
+
+    </script>
     <style>
+        /* CSS bleibt identisch zur vorherigen Version */
         #passwordOverlay {
             position: fixed;
             top: 0;
@@ -131,227 +361,5 @@
             </div>
         </div>
     </div>
-
-    <script>
-        // Globale Variablen
-        const ADMIN_PW_HASH = '429fd9718837cb7c4e6ace0712fde01e58be3368';
-        let hausgewinn = 15;
-        let chickens = {
-            1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
-            2: { name: "Turbo-Feder", bets: [], total: 0, color: "#48bb78" },
-            3: { name: "Regenbogen-Sturm", bets: [], total: 0, color: "#4299e1" },
-            4: { name: "Windflügel", bets: [], total: 0, color: "#f6e05e" },
-            5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
-        };
-
-        function checkPassword() {
-            const input = document.getElementById('passwordInput').value;
-            const inputHash = sha1(input);
-            
-            if(inputHash === ADMIN_PW_HASH) {
-                document.getElementById('passwordOverlay').style.display = "none";
-                document.getElementById('content').style.display = "block";
-                initSystem();
-            } else {
-                const errorElement = document.getElementById('passwordError');
-                errorElement.style.display = "block";
-                document.body.style.animation = "shake 0.5s";
-                setTimeout(() => {
-                    document.body.style.animation = "";
-                    errorElement.style.display = "none";
-                }, 1000);
-            }
-        }
-
-        function placeBet() {
-            const player = document.getElementById('playerName').value.trim();
-            const chickenId = document.getElementById('chickenSelect').value;
-            const amount = parseFloat(document.getElementById('betAmount').value);
-
-            if (!player || isNaN(amount) || amount < 1) {
-                alert("Bitte gültige Werte eingeben!");
-                return;
-            }
-
-            if (!chickens[chickenId]) {
-                alert("Ungültiges Huhn ausgewählt!");
-                return;
-            }
-
-            chickens[chickenId].bets.push({
-                player: player,
-                amount: amount,
-                timestamp: Date.now()
-            });
-            chickens[chickenId].total += amount;
-            
-            saveData();
-            updateDisplay();
-        }
-
-        function declareWinner(winnerId) {
-            if (!chickens[winnerId]) {
-                alert("Ungültiges Huhn ausgewählt!");
-                return;
-            }
-
-            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
-            const houseCut = totalPool * (hausgewinn / 100);
-            const payoutPool = totalPool - houseCut;
-            const winner = chickens[winnerId];
-            
-            const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
-
-            // Speichere vollständige Gewinnerdaten für Stats
-            const winnerData = {
-                id: winnerId,
-                name: winner.name,
-                time: new Date().toLocaleString(),
-                color: winner.color,
-                bets: [...winner.bets],
-                payoutRate: parseFloat(payoutRate)
-            };
-            localStorage.setItem('lastWinner', JSON.stringify(winnerData));
-
-            const resultHTML = `
-                <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
-                    <h3>🏆 ${winner.name} gewinnt!</h3>
-                    <p>Auszahlungsrate: ${payoutRate}€ pro 1€ Einsatz</p>
-                    ${winner.bets.length > 0 ? `
-                    <table style="width:100%; margin-top:10px;">
-                        ${winner.bets.map(bet => `
-                            <tr>
-                                <td>${bet.player}</td>
-                                <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
-                            </tr>
-                        `).join('')}
-                    </table>` : '<p>Keine Wetten für dieses Huhn</p>'}
-                </div>
-            `;
-            
-            document.getElementById('winnerResults').innerHTML = resultHTML;
-            saveData();
-        }
-
-        function updateDisplay() {
-            if (!chickens) {
-                console.error("Chickens nicht initialisiert!");
-                return;
-            }
-
-            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0) || 0;
-            const houseCut = totalPool * (hausgewinn / 100);
-            const payoutPool = totalPool - houseCut;
-
-            document.getElementById('oddsTable').innerHTML = Object.keys(chickens).map(id => `
-                <tr>
-                    <td>${chickens[id].name}</td>
-                    <td>${chickens[id].total.toFixed(2)}€</td>
-                    <td>${chickens[id].total > 0 ? (payoutPool / chickens[id].total).toFixed(2) + "€" : "-"}</td>
-                </tr>
-            `).join('');
-
-            document.getElementById('allBets').innerHTML = Object.keys(chickens).map(id => 
-                chickens[id].bets.map(bet => `
-                    <tr>
-                        <td>${bet.player}</td>
-                        <td>${chickens[id].name}</td>
-                        <td>${bet.amount.toFixed(2)}€</td>
-                        <td>${new Date(bet.timestamp).toLocaleTimeString()}</td>
-                    </tr>
-                `).join('')
-            ).join('');
-
-            document.getElementById('totalPool').textContent = totalPool.toFixed(2);
-            document.getElementById('hausgewinnDisplay').textContent = hausgewinn;
-            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-        }
-
-        function resetBets() {
-            if (!confirm("ALLE Wetten wirklich löschen?")) return;
-            
-            Object.keys(chickens).forEach(id => {
-                chickens[id].bets = [];
-                chickens[id].total = 0;
-            });
-            
-            localStorage.removeItem('chickenData');
-            updateDisplay();
-        }
-
-        function saveData() {
-            const data = JSON.stringify({
-                chickens: chickens,
-                hausgewinn: hausgewinn
-            });
-            localStorage.setItem('chickenData', data);
-            localStorage.setItem('dataHash', sha1(data));
-        }
-
-        function initSystem() {
-            try {
-                const savedData = localStorage.getItem('chickenData');
-                if (savedData) {
-                    if (sha1(savedData) !== localStorage.getItem('dataHash')) {
-                        throw new Error('Datenmanipulation erkannt');
-                    }
-                    
-                    const parsedData = JSON.parse(savedData);
-                    
-                    chickens = Object.keys(chickens).reduce((acc, key) => {
-                        acc[key] = parsedData.chickens[key] || chickens[key];
-                        return acc;
-                    }, {});
-                    
-                    hausgewinn = parsedData.hausgewinn || 15;
-                }
-            } catch (e) {
-                console.error("Initialisierungsfehler:", e);
-                resetBets();
-            }
-            
-            document.getElementById('hausgewinnInput').value = hausgewinn;
-            updateDisplay();
-        }
-
-        function updateHausgewinn() {
-            const newValue = parseInt(document.getElementById('hausgewinnInput').value);
-            if (isNaN(newValue) || newValue < 5 || newValue > 50) {
-                alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
-                return;
-            }
-            hausgewinn = newValue;
-            saveData();
-            updateDisplay();
-        }
-
-        // ========== SICHERHEITSFUNKTIONEN ==========
-        document.addEventListener('DOMContentLoaded', () => {
-            // Blockiere Entwicklerwerkzeuge
-            document.addEventListener('keydown', e => {
-                if (
-                    e.key === 'F12' ||
-                    (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-                    (e.ctrlKey && e.shiftKey && e.key === 'J') ||
-                    (e.ctrlKey && e.key === 'U')
-                ) {
-                    e.preventDefault();
-                    document.body.innerHTML = `
-                        <h1 style="color:red; text-align:center; margin-top:100px;">
-                            ⚠️ Zugriff auf Entwicklerwerkzeuge blockiert!
-                        </h1>
-                    `;
-                }
-            });
-            
-            // Blockiere Rechtsklick
-            document.addEventListener('contextmenu', e => e.preventDefault());
-            
-            initSystem();
-        });
-
-        // Automatisches Speichern alle 30 Sekunden
-        setInterval(saveData, 30000);
-    </script>
 </body>
 </html>
