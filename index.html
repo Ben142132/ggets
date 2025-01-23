@@ -7,7 +7,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBFgrVFSztNcvGdQnXidIEZ3ZAQrH33JC4",
@@ -20,9 +19,9 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const auth = getAuth(app);
 
         // Globale Variablen
+        const ADMIN_PW_HASH = 'a58a37c5b9127c8256c7a0f1a4b5a0a3c991580a';
         let hausgewinn = 15;
         let chickens = {
             1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
@@ -32,26 +31,23 @@
             5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
         };
 
-        async function checkPassword() {
+        function checkPassword() {
             const input = document.getElementById('passwordInput').value;
-            try {
-                await signInWithEmailAndPassword(auth, "admin@huehnerrennen.de", input);
+            const inputHash = sha1(input);
+            
+            if(inputHash === ADMIN_PW_HASH) {
                 document.getElementById('passwordOverlay').style.display = "none";
                 document.getElementById('content').style.display = "block";
                 initSystem();
-            } catch (error) {
-                handleLoginError();
+            } else {
+                const errorElement = document.getElementById('passwordError');
+                errorElement.style.display = "block";
+                document.body.style.animation = "shake 0.5s";
+                setTimeout(() => {
+                    document.body.style.animation = "";
+                    errorElement.style.display = "none";
+                }, 1000);
             }
-        }
-
-        function handleLoginError() {
-            const errorElement = document.getElementById('passwordError');
-            errorElement.style.display = "block";
-            document.body.style.animation = "shake 0.5s";
-            setTimeout(() => {
-                document.body.style.animation = "";
-                errorElement.style.display = "none";
-            }, 1000);
         }
 
         async function saveData() {
@@ -67,12 +63,17 @@
             }
         }
 
+        // Rest der Funktionen
         function placeBet() {
             const player = document.getElementById('playerName').value.trim();
             const chickenId = document.getElementById('chickenSelect').value;
             const amount = parseFloat(document.getElementById('betAmount').value);
 
-            if (!validateBetInput(player, amount)) return;
+            if (!player || isNaN(amount) || amount < 1) {
+                alert("Bitte gültige Werte eingeben!");
+                return;
+            }
+
             if (!chickens[chickenId]) {
                 alert("Ungültiges Huhn ausgewählt!");
                 return;
@@ -89,35 +90,19 @@
             updateDisplay();
         }
 
-        function validateBetInput(player, amount) {
-            if (!player || isNaN(amount) || amount < 1) {
-                alert("Bitte gültige Werte eingeben!");
-                return false;
-            }
-            return true;
-        }
-
         function declareWinner(winnerId) {
             if (!chickens[winnerId]) {
                 alert("Ungültiges Huhn ausgewählt!");
                 return;
             }
 
-            const totalPool = calculateTotalPool();
+            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
             const houseCut = totalPool * (hausgewinn / 100);
             const payoutPool = totalPool - houseCut;
             const winner = chickens[winnerId];
+            
             const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
 
-            showWinnerResults(winner, payoutRate);
-            saveData();
-        }
-
-        function calculateTotalPool() {
-            return Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
-        }
-
-        function showWinnerResults(winner, payoutRate) {
             const resultHTML = `
                 <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
                     <h3>🏆 ${winner.name} gewinnt!</h3>
@@ -134,19 +119,14 @@
                 </div>
             `;
             document.getElementById('winnerResults').innerHTML = resultHTML;
+            saveData();
         }
 
         function updateDisplay() {
-            const totalPool = calculateTotalPool();
+            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0) || 0;
             const houseCut = totalPool * (hausgewinn / 100);
             const payoutPool = totalPool - houseCut;
 
-            updateOddsTable(payoutPool);
-            updateAllBetsTable();
-            updateStatsDisplay(totalPool);
-        }
-
-        function updateOddsTable(payoutPool) {
             document.getElementById('oddsTable').innerHTML = Object.keys(chickens).map(id => `
                 <tr>
                     <td>${chickens[id].name}</td>
@@ -154,9 +134,7 @@
                     <td>${chickens[id].total > 0 ? (payoutPool / chickens[id].total).toFixed(2) + "€" : "-"}</td>
                 </tr>
             `).join('');
-        }
 
-        function updateAllBetsTable() {
             document.getElementById('allBets').innerHTML = Object.keys(chickens).map(id => 
                 chickens[id].bets.map(bet => `
                     <tr>
@@ -167,9 +145,7 @@
                     </tr>
                 `).join('')
             ).join('');
-        }
 
-        function updateStatsDisplay(totalPool) {
             document.getElementById('totalPool').textContent = totalPool.toFixed(2);
             document.getElementById('hausgewinnDisplay').textContent = hausgewinn;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -183,17 +159,6 @@
                 chickens[id].total = 0;
             });
             
-            saveData();
-            updateDisplay();
-        }
-
-        function updateHausgewinn() {
-            const newValue = parseInt(document.getElementById('hausgewinnInput').value);
-            if (isNaN(newValue) || newValue < 5 || newValue > 50) {
-                alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
-                return;
-            }
-            hausgewinn = newValue;
             saveData();
             updateDisplay();
         }
@@ -225,16 +190,19 @@
             updateDisplay();
         }
 
-        auth.onAuthStateChanged(user => {
-            if (!user) {
-                document.getElementById('passwordOverlay').style.display = "flex";
-                document.getElementById('content').style.display = "none";
+        function updateHausgewinn() {
+            const newValue = parseInt(document.getElementById('hausgewinnInput').value);
+            if (isNaN(newValue) || newValue < 5 || newValue > 50) {
+                alert("Bitte einen Wert zwischen 5 und 50% eingeben!");
+                return;
             }
-        });
+            hausgewinn = newValue;
+            saveData();
+            updateDisplay();
+        }
 
     </script>
     <style>
-        /* CSS bleibt identisch zur vorherigen Version */
         #passwordOverlay {
             position: fixed;
             top: 0;
@@ -285,9 +253,9 @@
     <div id="passwordOverlay">
         <div class="password-box">
             <h2>🔒 Admin-Zugang Hühnerrennen</h2>
-            <input type="password" id="passwordInput" placeholder="Code eingeben">
+            <input type="password" id="passwordInput" placeholder="Passwort eingeben">
             <button onclick="checkPassword()">Freischalten</button>
-            <p id="passwordError">Falscher Code!</p>
+            <p id="passwordError">Falsches Passwort!</p>
         </div>
     </div>
 
