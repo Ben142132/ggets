@@ -90,7 +90,7 @@
             updateDisplay();
         };
 
-        window.declareWinner = function(winnerId) {
+        window.declareWinner = async function(winnerId) {
             if (!chickens[winnerId]) {
                 alert("Ungültiges Huhn ausgewählt!");
                 return;
@@ -102,6 +102,19 @@
             const winner = chickens[winnerId];
             
             const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
+
+            const winnerData = {
+                name: winner.name,
+                time: new Date().toLocaleTimeString(),
+                payoutRate: payoutRate,
+                bets: winner.bets,
+                color: winner.color
+            };
+
+            // Speichere den Gewinner in Firebase
+            await setDoc(doc(db, "rennen", "daten"), { 
+                lastWinner: winnerData 
+            }, { merge: true });
 
             const resultHTML = `
                 <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
