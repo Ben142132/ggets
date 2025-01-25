@@ -21,7 +21,7 @@
         const db = getFirestore(app);
 
         // Globale Variablen
-        const ADMIN_PW_HASH = '429fd9718837cb7c4e6ace0712fde01e58be3368'; // SHA1 
+        const ADMIN_PW_HASH = '429fd9718837cb7c4e6ace0712fde01e58be3368';
         let hausgewinn = 15;
         let chickens = {
             1: { name: "Blitzhenne", bets: [], total: 0, color: "#f56565" },
@@ -31,12 +31,11 @@
             5: { name: "Megawatt", bets: [], total: 0, color: "#9f7aea" }
         };
 
-        // Funktion global verfügbar machen
         window.checkPassword = function() {
             const input = document.getElementById('passwordInput').value;
             const inputHash = sha1(input);
             
-            if(inputHash === ADMIN_PW_HASH) {
+            if (inputHash === ADMIN_PW_HASH) {
                 document.getElementById('passwordOverlay').style.display = "none";
                 document.getElementById('content').style.display = "block";
                 initSystem();
@@ -91,48 +90,57 @@
         };
 
         window.declareWinner = async function(winnerId) {
-            if (!chickens[winnerId]) {
-                alert("Ungültiges Huhn ausgewählt!");
-                return;
+            try {
+                if (!chickens[winnerId]) {
+                    alert("Ungültiges Huhn ausgewählt!");
+                    return;
+                }
+
+                const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
+                const houseCut = totalPool * (hausgewinn / 100);
+                const payoutPool = totalPool - houseCut;
+                const winner = chickens[winnerId];
+                const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
+
+                // Gewinnerdaten mit korrekten Typen
+                const winnerData = {
+                    name: winner.name,
+                    time: new Date().toLocaleTimeString(),
+                    payoutRate: parseFloat(payoutRate),
+                    bets: winner.bets.map(bet => ({
+                        player: bet.player,
+                        amount: bet.amount,
+                        timestamp: bet.timestamp
+                    })),
+                    color: winner.color
+                };
+
+                // Firestore-Update mit merge: true
+                await setDoc(doc(db, "rennen", "daten"), { 
+                    lastWinner: winnerData 
+                }, { merge: true });
+
+                // Ergebnis anzeigen
+                document.getElementById('winnerResults').innerHTML = `
+                    <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
+                        <h3>🏆 ${winner.name} gewinnt!</h3>
+                        <p>Auszahlungsrate: ${payoutRate}€ pro 1€ Einsatz</p>
+                        ${winner.bets.length > 0 ? `
+                        <table style="width:100%; margin-top:10px;">
+                            ${winner.bets.map(bet => `
+                                <tr>
+                                    <td>${bet.player}</td>
+                                    <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
+                                </tr>
+                            `).join('')}
+                        </table>` : '<p>Keine Wetten für dieses Huhn</p>'}
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error("Fehler beim Speichern des Gewinners:", error);
+                alert("⚠️ Kritischer Fehler – siehe Browser-Konsole!");
             }
-
-            const totalPool = Object.values(chickens).reduce((sum, c) => sum + c.total, 0);
-            const houseCut = totalPool * (hausgewinn / 100);
-            const payoutPool = totalPool - houseCut;
-            const winner = chickens[winnerId];
-            
-            const payoutRate = winner.total > 0 ? (payoutPool / winner.total).toFixed(2) : 0;
-
-            const winnerData = {
-                name: winner.name,
-                time: new Date().toLocaleTimeString(),
-                payoutRate: payoutRate,
-                bets: winner.bets,
-                color: winner.color
-            };
-
-            // Speichere den Gewinner in Firebase
-            await setDoc(doc(db, "rennen", "daten"), { 
-                lastWinner: winnerData 
-            }, { merge: true });
-
-            const resultHTML = `
-                <div style="border:2px solid ${winner.color}; padding:10px; border-radius:8px;">
-                    <h3>🏆 ${winner.name} gewinnt!</h3>
-                    <p>Auszahlungsrate: ${payoutRate}€ pro 1€ Einsatz</p>
-                    ${winner.bets.length > 0 ? `
-                    <table style="width:100%; margin-top:10px;">
-                        ${winner.bets.map(bet => `
-                            <tr>
-                                <td>${bet.player}</td>
-                                <td>${(bet.amount * payoutRate).toFixed(2)}€</td>
-                            </tr>
-                        `).join('')}
-                    </table>` : '<p>Keine Wetten für dieses Huhn</p>'}
-                </div>
-            `;
-            document.getElementById('winnerResults').innerHTML = resultHTML;
-            saveData();
         };
 
         function updateDisplay() {
@@ -140,25 +148,28 @@
             const houseCut = totalPool * (hausgewinn / 100);
             const payoutPool = totalPool - houseCut;
 
+            // Quotentabelle
             document.getElementById('oddsTable').innerHTML = Object.keys(chickens).map(id => `
                 <tr>
-                    <td>${chickens[id].name}</td>
+                    <td style="color: ${chickens[id].color}">${chickens[id].name}</td>
                     <td>${chickens[id].total.toFixed(2)}€</td>
                     <td>${chickens[id].total > 0 ? (payoutPool / chickens[id].total).toFixed(2) + "€" : "-"}</td>
                 </tr>
             `).join('');
 
+            // Wettverlauf
             document.getElementById('allBets').innerHTML = Object.keys(chickens).map(id => 
                 chickens[id].bets.map(bet => `
                     <tr>
                         <td>${bet.player}</td>
-                        <td>${chickens[id].name}</td>
+                        <td style="color: ${chickens[id].color}">${chickens[id].name}</td>
                         <td>${bet.amount.toFixed(2)}€</td>
                         <td>${new Date(bet.timestamp).toLocaleTimeString()}</td>
                     </tr>
                 `).join('')
             ).join('');
 
+            // Statistik
             document.getElementById('totalPool').textContent = totalPool.toFixed(2);
             document.getElementById('hausgewinnDisplay').textContent = hausgewinn;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -182,8 +193,8 @@
             onSnapshot(docRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
-                    chickens = data.chickens;
-                    hausgewinn = data.hausgewinn;
+                    chickens = data.chickens || chickens;
+                    hausgewinn = data.hausgewinn || 15;
                     updateDisplay();
                 }
             });
@@ -192,8 +203,8 @@
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    chickens = data.chickens;
-                    hausgewinn = data.hausgewinn;
+                    chickens = data.chickens || chickens;
+                    hausgewinn = data.hausgewinn || 15;
                 }
             } catch (e) {
                 console.error("Ladefehler: ", e);
