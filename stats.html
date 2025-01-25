@@ -122,7 +122,7 @@
                     currentData = {
                         chickens: data.chickens || {},
                         hausgewinn: data.hausgewinn || 15,
-                        lastWinner: JSON.parse(localStorage.getItem('lastWinner')) || null
+                        lastWinner: data.lastWinner || null // Direkt aus Firestore
                     };
                     updateUI();
                 } else {
