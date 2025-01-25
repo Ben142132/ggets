@@ -4,93 +4,21 @@
     <meta charset="UTF-8">
     <title>Live Hühnerrennen-Statistik</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 20px;
-            background: #f0f4f8;
-        }
-        .container {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 25px;
-            margin-top: 20px;
-        }
-        .section {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            border: 2px solid #d1d8e0;
-            min-height: 400px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        th, td {
-            padding: 12px;
-            border: 1px solid #e8e8e8;
-            text-align: left;
-            color: #333;
-        }
-        th {
-            background: #f8f9fa;
-            font-weight: bold;
-        }
-        .winner-banner {
-            background: rgba(255,255,255,0.95);
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 2px solid;
-            color: #333;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        #refreshButton {
-            background: #2196F3;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            margin-top: 15px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        #refreshButton:hover {
-            background: #1976D2;
-        }
-        .hausgewinn-info {
-            background: #fff3cd;
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #ffeeba;
-        }
-        .winner-details table {
-            width: 100%;
-            margin-top: 10px;
-            background: rgba(255,255,255,0.95);
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .winner-details td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            color: #333;
-        }
-        .winner-details tr:last-child td {
-            border-bottom: none;
-        }
-        .data-loading {
-            color: #666;
-            font-style: italic;
-            padding: 20px;
-            text-align: center;
-        }
+        /* CSS-Stile (unverändert) */
+        body { font-family: 'Arial', sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; background: #f0f4f8; }
+        .container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-top: 20px; }
+        .section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 2px solid #d1d8e0; min-height: 400px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; border: 1px solid #e8e8e8; text-align: left; color: #333; }
+        th { background: #f8f9fa; font-weight: bold; }
+        .winner-banner { background: rgba(255,255,255,0.95); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 2px solid; color: #333; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        #refreshButton { background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-top: 15px; cursor: pointer; transition: background 0.3s; }
+        #refreshButton:hover { background: #1976D2; }
+        .hausgewinn-info { background: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffeeba; }
+        .winner-details table { width: 100%; margin-top: 10px; background: rgba(255,255,255,0.95); border-radius: 8px; overflow: hidden; }
+        .winner-details td { padding: 10px; border-bottom: 1px solid #eee; color: #333; }
+        .winner-details tr:last-child td { border-bottom: none; }
+        .data-loading { color: #666; font-style: italic; padding: 20px; text-align: center; }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
@@ -114,50 +42,59 @@
             lastWinner: null
         };
 
-        // Firebase-Datenabonnement
-        const unsubscribe = onSnapshot(doc(db, "rennen", "daten"), (doc) => {
-            try {
-                if (doc.exists()) {
+        // 🔥 Firebase-Abonnement mit erweitertem Error-Handling
+        const unsubscribe = onSnapshot(doc(db, "rennen", "daten"), 
+            (doc) => {
+                try {
+                    if (!doc.exists()) {
+                        showDataLoadingMessage();
+                        return;
+                    }
+
                     const data = doc.data();
+                    console.log("Firestore-Daten:", data); // Debugging
+
                     currentData = {
                         chickens: data.chickens || {},
                         hausgewinn: data.hausgewinn || 15,
-                        lastWinner: data.lastWinner || null // Direkt aus Firestore
+                        lastWinner: data.lastWinner || null
                     };
+
+                    // Sofortige UI-Aktualisierung
                     updateUI();
-                } else {
-                    showDataLoadingMessage();
+                } 
+                catch (e) {
+                    console.error("Kritischer Fehler:", e);
+                    showErrorMessage();
                 }
-            } catch (e) {
-                console.error('Fehler bei Datenverarbeitung:', e);
+            },
+            (error) => { // Firestore-spezifische Fehler
+                console.error("Firestore-Fehler:", error);
                 showErrorMessage();
             }
-        });
+        );
 
         function updateUI() {
-            // Grundlegende Datenchecks
-            if (!currentData.chickens || Object.keys(currentData.chickens).length === 0) {
-                showDataLoadingMessage();
-                return;
-            }
-
-            // Hausgewinn aktualisieren
-            document.getElementById('currentHausgewinn').textContent = currentData.hausgewinn;
-
-            // Tabellen aktualisieren
+            // 🛠️ Schritt-für-Schritt-Aktualisierung
+            updateHausgewinnDisplay();
             updateOddsTable();
             updateBetsTable();
-
-            // Gewinner anzeigen
-            showLastWinner();
-
-            // Zeitstempel aktualisieren
+            updateWinnerBanner();
             updateTimestamp();
+        }
+
+        function updateHausgewinnDisplay() {
+            document.getElementById('currentHausgewinn').textContent = currentData.hausgewinn;
         }
 
         function updateOddsTable() {
             const oddsTable = document.getElementById('oddsTable');
-            const totalPool = calculateTotalPool();
+            if (!currentData.chickens || Object.keys(currentData.chickens).length === 0) {
+                oddsTable.innerHTML = `<tr><td class="data-loading">📡 Keine Hühnertaten verfügbar</td></tr>`;
+                return;
+            }
+
+            const totalPool = Object.values(currentData.chickens).reduce((sum, c) => sum + (c.total || 0), 0);
             const houseCut = totalPool * (currentData.hausgewinn / 100);
             const payoutPool = totalPool - houseCut;
 
@@ -165,11 +102,11 @@
                 <tr><th>Huhn</th><th>Einsätze</th><th>Quote</th></tr>
                 ${Object.keys(currentData.chickens).map(id => `
                     <tr>
-                        <td>${currentData.chickens[id]?.name || 'Unbekannt'}</td>
+                        <td style="color: ${currentData.chickens[id]?.color || '#333'}">${currentData.chickens[id]?.name || 'Unbekannt'}</td>
                         <td>${(currentData.chickens[id]?.total || 0).toFixed(2)}€</td>
                         <td>${currentData.chickens[id]?.total > 0 
                             ? (payoutPool / currentData.chickens[id].total).toFixed(2) + '€'
-                            : '-'}
+                            : '–'}
                         </td>
                     </tr>
                 `).join('')}
@@ -178,62 +115,67 @@
 
         function updateBetsTable() {
             const allBets = document.getElementById('allBets');
+            if (!currentData.chickens) {
+                allBets.innerHTML = `<tr><td class="data-loading">📡 Keine Wettdaten verfügbar</td></tr>`;
+                return;
+            }
+
             allBets.innerHTML = `
                 <tr><th>Spieler</th><th>Huhn</th><th>Einsatz</th><th>Zeit</th></tr>
                 ${Object.keys(currentData.chickens).map(id => 
                     (currentData.chickens[id]?.bets || []).map(bet => `
                         <tr>
-                            <td>${bet.player || 'Unbekannt'}</td>
-                            <td>${currentData.chickens[id]?.name || 'Unbekannt'}</td>
+                            <td>${bet.player || 'Anonym'}</td>
+                            <td style="color: ${currentData.chickens[id]?.color || '#333'}">${currentData.chickens[id]?.name || 'Unbekannt'}</td>
                             <td>${(bet.amount || 0).toFixed(2)}€</td>
-                            <td>${bet.timestamp ? new Date(bet.timestamp).toLocaleTimeString() : '-'}</td>
+                            <td>${bet.timestamp ? new Date(bet.timestamp).toLocaleTimeString() : '–'}</td>
                         </tr>
                     `).join('')
                 ).join('')}
             `;
         }
 
-        function showLastWinner() {
+        function updateWinnerBanner() {
             const banner = document.getElementById('lastWinner');
-            if (!currentData.lastWinner) {
+            if (!currentData.lastWinner || !currentData.lastWinner.name) {
                 banner.innerHTML = `
                     <div class="data-loading">
                         🏁 Noch kein Rennen beendet
                     </div>
                 `;
+                banner.style.borderColor = '#d1d8e0';
                 return;
             }
 
             try {
+                const winner = currentData.lastWinner;
                 banner.innerHTML = `
-                    <h3 style="margin:0; color: #333;">🏆 ${currentData.lastWinner.name} (${currentData.lastWinner.time})</h3>
-                    ${currentData.lastWinner.bets?.length > 0 ? `
+                    <h3 style="margin:0; color: ${winner.color || '#333'}">🏆 ${winner.name} (${winner.time})</h3>
+                    ${winner.bets?.length > 0 ? `
                     <div class="winner-details">
-                        <p style="margin:15px 0 10px 0; color: #333; font-weight: bold;">🏅 Gewinnerdetails:</p>
+                        <p style="margin:15px 0 10px 0; color: #333; font-weight: bold;">🏅 Ausgezahlte Gewinne:</p>
                         <table>
-                            ${currentData.lastWinner.bets.map(bet => `
+                            ${winner.bets.map(bet => `
                                 <tr>
-                                    <td>${bet.player || 'Unbekannt'}</td>
-                                    <td>${(bet.amount * currentData.lastWinner.payoutRate).toFixed(2)}€</td>
-                                    <td style="color: #666;">(${(bet.amount || 0).toFixed(2)}€ Einsatz)</td>
+                                    <td>${bet.player || 'Anonym'}</td>
+                                    <td>${(bet.amount * winner.payoutRate).toFixed(2)}€</td>
+                                    <td style="color: #666; font-size: 0.9em;">(${(bet.amount || 0).toFixed(2)}€ Einsatz)</td>
                                 </tr>
                             `).join('')}
                         </table>
                     </div>
                     ` : '<p style="margin-top:15px; color: #666;">Keine Gewinnerwetten</p>'}
                 `;
-                banner.style.borderColor = currentData.lastWinner.color || '#48bb78';
-            } catch (e) {
+                banner.style.borderColor = winner.color || '#48bb78';
+            } 
+            catch (e) {
                 banner.innerHTML = `
                     <div class="data-loading" style="color: #dc3545;">
-                        ⚠️ Fehler bei der Gewinneranzeige
+                        ⚠️ Fehler: Ungültige Gewinnerdaten
                     </div>
                 `;
+                console.error("Gewinner-Rendering-Fehler:", e);
             }
-        }
-
-        function calculateTotalPool() {
-            return Object.values(currentData.chickens).reduce((sum, c) => sum + (c.total || 0), 0);
         }
 
         function updateTimestamp() {
@@ -242,40 +184,19 @@
 
         function showDataLoadingMessage() {
             document.querySelectorAll('.section table').forEach(table => {
-                table.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="data-loading">
-                            📡 Daten werden geladen...
-                        </td>
-                    </tr>
-                `;
+                table.innerHTML = `<tr><td colspan="4" class="data-loading">📡 Verbinde mit Hühner-Server...</td></tr>`;
             });
         }
 
         function showErrorMessage() {
             document.querySelectorAll('.section table').forEach(table => {
-                table.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="data-loading" style="color: #dc3545;">
-                            ⚠️ Fehler beim Laden der Daten
-                        </td>
-                    </tr>
-                `;
+                table.innerHTML = `<tr><td colspan="4" class="data-loading" style="color: #dc3545;">⚠️ Verbindungsfehler</td></tr>`;
             });
         }
 
-        // Manuelle Aktualisierung
-        window.loadData = function() {
-            updateUI();
-            updateTimestamp();
-        };
-
         // Initialisierung
         document.addEventListener('DOMContentLoaded', () => {
-            // Zeitaktualisierung alle Sekunde
             setInterval(updateTimestamp, 1000);
-            
-            // Initiales Laden
             updateUI();
         });
     </script>
@@ -285,7 +206,7 @@
     
     <div id="lastWinner" class="winner-banner">
         <div class="data-loading">
-            📡 Gewinnerdaten werden geladen...
+            📡 Starte Hühner-Überwachung...
         </div>
     </div>
 
@@ -297,19 +218,15 @@
         <div class="section">
             <h2 style="color: #3498db;">📈 Aktuelle Quoten</h2>
             <div id="poolStatus">
-                Letzte Aktualisierung: <span id="updateTime">-</span>
+                Letzte Aktualisierung: <span id="updateTime">–</span>
             </div>
-            <table id="oddsTable">
-                <tr><td class="data-loading">Daten werden geladen...</td></tr>
-            </table>
+            <table id="oddsTable"></table>
         </div>
 
         <div class="section">
             <h2 style="color: #27ae60;">📋 Alle Wetten</h2>
-            <table id="allBets">
-                <tr><td class="data-loading">Daten werden geladen...</td></tr>
-            </table>
-            <button id="refreshButton" onclick="loadData()">⟳ Aktualisieren</button>
+            <table id="allBets"></table>
+            <button id="refreshButton" onclick="updateUI()">⟳ Manuell aktualisieren</button>
         </div>
     </div>
 </body>
